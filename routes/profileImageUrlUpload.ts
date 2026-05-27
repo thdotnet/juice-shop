@@ -13,6 +13,50 @@ import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 import logger from '../lib/logger'
 
+function isPrivateOrLocalHost (hostname: string): boolean {
+  const lowerHost = hostname.toLowerCase()
+  if (lowerHost === 'localhost' || lowerHost === '::1') {
+    return true
+  }
+  // IPv4-style checks
+  if (lowerHost.startsWith('127.')) { // 127.0.0.0/8 loopback
+    return true
+  }
+  if (lowerHost.startsWith('10.')) { // 10.0.0.0/8 private
+    return true
+  }
+  if (lowerHost.startsWith('192.168.')) { // 192.168.0.0/16 private
+    return true
+  }
+  if (lowerHost.startsWith('172.')) {
+    const parts = lowerHost.split('.')
+    if (parts.length >= 2) {
+      const secondOctet = parseInt(parts[1], 10)
+      if (!Number.isNaN(secondOctet) && secondOctet >= 16 && secondOctet <= 31) {
+        // 172.16.0.0/12 private
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function isUrlSafeForServerFetch (url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false
+  }
+  if (isPrivateOrLocalHost(parsed.hostname)) {
+    return false
+  }
+  return true
+}
+
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (req.body.imageUrl !== undefined) {
@@ -21,6 +65,9 @@ export function profileImageUrlUpload () {
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
         try {
+          if (!isUrlSafeForServerFetch(url)) {
+            throw new Error('Refusing to fetch potentially unsafe profile image URL')
+          }
           const response = await fetch(url)
           if (!response.ok || !response.body) {
             throw new Error('url returned a non-OK status code or an empty body')
