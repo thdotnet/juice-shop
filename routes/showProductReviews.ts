@@ -27,8 +27,13 @@ global.sleep = (time: number) => {
 
 export function showProductReviews () {
   return (req: Request, res: Response, next: NextFunction) => {
-    // Truncate id to avoid unintentional RCE
-    const id = !utils.isChallengeEnabled(challenges.noSqlCommandChallenge) ? Number(req.params.id) : utils.trunc(req.params.id, 40)
+    // Parse and validate id to avoid RCE via MongoDB $where
+    const parsedId = Number(req.params.id)
+    if (!Number.isFinite(parsedId)) {
+      res.status(400).json({ error: 'Wrong Params' })
+      return
+    }
+    const id = parsedId
 
     // Measure how long the query takes, to check if there was a nosql dos attack
     const t0 = new Date().getTime()
